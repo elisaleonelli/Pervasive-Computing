@@ -1,0 +1,5 @@
+google-cloud-firestore
+functions-framework==3.*
+flask_login
+google-cloud-storage
+requests
