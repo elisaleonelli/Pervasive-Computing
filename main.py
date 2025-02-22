@@ -1,108 +1,151 @@
-from flask import Flask, request, redirect, url_for, render_template
-from requests import get, post
 from flask_login import LoginManager, current_user, login_user, logout_user, login_required, UserMixin
-from secret import secret_key
-from google.cloud import firestore
+from flask import Flask, request, redirect, url_for, render_template
 import json
-from joblib import load
-from google.cloud import storage
-from google.cloud import pubsub_v1
-from google.auth import jwt
-
-class User(UserMixin):
-    def __init__(self, email):
-        super().__init__()
-        self.id = email  # Imposta l'email come identificatore univoco
-        self.email = email  # Salva l'email come attributo 
+from google.cloud import firestore
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = secret_key
-login = LoginManager(app)
-login.login_view = 'login'  # Reindirizza a Flask per la pagina di login, non a una statica
 
-# apertura connessione DB Firestore
-dbName = 'progetto'
-coll = 'consegne'
-db = firestore.Client.from_service_account_json("credentials.json", database=dbName)
+usersdb = {
+    'elisaleonelli2000@gmail.com': 'Micetto'
+}
 
-credenziali = {"elisaleonelli2000@gmail.com" : "Micetto",
-          "266983@studenti.unimore.it" : "Unimore"}
+# Inizializza un contatore globale
+order_count = 0
+statistics_batch_size = 5  # Calcola le statistiche ogni X ordini ricevuti
 
-# questa parte di codice mi riporta alla pagina iniziale quando apro il server 
+#vengo indirizzato alla pagina iniziale quando apro l'applicazione
 @app.route('/')
 def main():
     return redirect(url_for('static', filename='paginainiziale.html'))
-
-print('ciao1')
-
-@login.user_loader
-def load_user(email):
-    if email in credenziali:
-        return User(email)
-    return None
 
 @app.route('/login', methods=['POST'])
 def login():
     email = request.form.get('email')
     password = request.form.get('password')
-    if email in credenziali and password == credenziali[email]:
+    if email in usersdb and password == usersdb[email]:
         return redirect(url_for('static', filename='home.html'))
     return redirect(url_for('static', filename='login.html'))
 
-
-@app.route('/logout', methods=['POST'])
-def logout():
-    logout_user()
-    return redirect(url_for('main'))  # Reindirizza alla home dopo il logout
-
-print('ciao2')
-
-
-def upload_data(data):
-    print("Salvataggio dati")
-    docID = data['ID']  # ID del documento
-    docVal = {
-        'Delivery_person_ID': data['Delivery_person_ID'],
-        'Delivery_person_Age': data['Delivery_person_Age'],
-        'Delivery_person_Ratings': data['Delivery_person_Ratings'],
-        'Restaurant_location': data['Restaurant_location'],
-        'Delivery_location': data['Delivery_location'],
-        'Type_of_order': data['Type_of_order'],
-        'Type_of_vehicle': data['Type_of_vehicle'],
-        'Time_taken_min': data['Time_taken_min']
-    }
-    print("docVal: ", docVal)
-
-    docRef = db.collection(coll).document(docID)  # Riferimento al documento
-    docRef.set(docVal)  # Scrittura su Firestore
-
-    # Endpoint per ricevere dati dal client
-@app.route('/upload', methods=['POST'])
-def upload():
-    try:
-        data = request.get_json()
-        print("Dati ricevuti:", data)
-        upload_data(data)
-        return "Dati salvati con successo", 200
-    except Exception as e:
-        print(f"Errore: {e}")
-        return f"Errore: {e}", 500
-
-    
-# Endpoint per recuperare i dati da Firestore
-@app.route('/upload/<docID>', methods=['GET'])
-def get_data(docID):
-    # Riferimento al documento
-    docRef = db.collection(coll).document(docID)
-    doc = docRef.get()  # Recupera il documento
-
-    if doc.exists:
-        # Converte il documento in un dizionario e lo restituisce
-        return doc.to_dict(), 200
+@app.route('/maps', methods=['POST', 'GET'])
+def read_data():
+    db = firestore.Client.from_service_account_json('credentials.json', database='prleonelli')
+    doc_ref = db.collection('Table1').document('Ordini')
+    if doc_ref.get().exists:
+        diz = doc_ref.get().to_dict()
+        r=[]
+        for i in range(1, len(diz)+1):
+            r.append([i, diz[str(i)]])
     else:
-        return {"error": "Documento non trovato"}, 404
+        print('document not found', 404)
+    return json.dumps(r), 200
+
+@app.route('/salvataggio', methods=['POST'])
+def store():
+    global order_count  # Usa il contatore globale
+
+    # Estrai l'ID dell'ordine dalla request
+    delivery = json.loads(request.values['Data'])  # Estrai i dati dell'ordine
+    ID = delivery['ID']  # Estrai l'ID dell'ordine
+
+    val = {
+        'Delivery_ID': delivery['Delivery_ID'],
+        'Delivery_age': delivery['Delivery_age'],
+        'Delivery_ratings': delivery['Delivery_ratings'],
+        'Restaurant_location': delivery['Restaurant_location'],
+        'Delivery_location': delivery['Delivery_location'],
+        'Type_of_order': delivery['Type_of_order'],
+        'Type_of_vehicle': delivery['Type_of_vehicle'],
+        'Time_taken': delivery['Time_taken']
+    }  # Crea un nuovo dizionario con i dati dell'ordine
+
+    db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
+    doc_ref = db.collection('Table1').document('Ordini')  # Riferimento al documento "Ordini"
+
+    if doc_ref.get().exists:
+        # Se il documento esiste, aggiorno il Firestore
+        diz = doc_ref.get().to_dict()  # Ottieni la versione attuale dei dati
+        diz[ID] = val  # Aggiungi il nuovo ordine al dizionario
+        doc_ref.update(diz)  # Aggiorna il documento
+    else:
+        # Se il documento non esiste, lo creo e inserisco il primo ordine
+        doc_ref.set({ID: val})
+
+    order_count += 1  # Incrementa il contatore degli ordini ricevuti
+
+    # Calcolare le statistiche ogni X ordini ricevuti
+    if order_count % statistics_batch_size == 0:
+        calculate_delivery_time_statistics()
+
+    return f"Dati memorizzati con successo"
+
+# Funzione per calcolare le statistiche del tempo di consegna, valutazione media e numero di consegne
+def calculate_delivery_time_statistics():
+    db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
+    doc_ref = db.collection('Table1').document('Ordini')
+
+    if doc_ref.get().exists:
+        diz = doc_ref.get().to_dict()
+        driver_stats = {}
+
+        # Calcolare il tempo medio, la valutazione media e il numero totale di consegne per driver
+        for ordine in diz.values():
+            driver_id = ordine['Delivery_ID']
+            delivery_time = ordine['Time_taken']
+            delivery_rating = ordine['Delivery_ratings']
+
+            if driver_id not in driver_stats:
+                driver_stats[driver_id] = {
+                    'total_time': 0, 
+                    'order_count': 0, 
+                    'total_rating': 0
+                }
+
+            driver_stats[driver_id]['total_time'] += delivery_time
+            driver_stats[driver_id]['order_count'] += 1
+            driver_stats[driver_id]['total_rating'] += delivery_rating
+
+        driver_avg_time = {}
+        driver_avg_rating = {}
+        driver_total_orders = {}
+
+        for driver_id, stats in driver_stats.items():
+            avg_time = stats['total_time'] / stats['order_count']
+            avg_rating = stats['total_rating'] / stats['order_count']
+            total_orders = stats['order_count']
+
+            driver_avg_time[driver_id] = avg_time
+            driver_avg_rating[driver_id] = avg_rating
+            driver_total_orders[driver_id] = total_orders
+
+        # Salvataggio delle statistiche nel Firestore
+        save_statistics_to_firestore(driver_avg_time, driver_avg_rating, driver_total_orders)
+
+# Funzione per salvare le statistiche nel database
+def save_statistics_to_firestore(avg_time, avg_rating, total_orders):
+    db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
+    stats_ref = db.collection('Driver_Statistics').document('Statistics')
+
+    stats_ref.set({
+        'timestamp': firestore.SERVER_TIMESTAMP,
+        'average_times': avg_time,
+        'average_ratings': avg_rating,
+        'total_orders': total_orders
+    })
+
+@app.route('/graph', methods=['POST', 'GET'])
+def graph1_data():
+    db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
+    doc_ref = db.collection('Table1').document('Ordini')
+    
+    if doc_ref.get().exists:
+        r = []
+        diz = doc_ref.get().to_dict()
+        for i in range(1, len(diz) + 1):
+            r.append([i, diz[str(i)]])
+    else:
+        print('Document not found', 404)
+
+    return render_template('graph.html', data=r)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000 , debug=True)
-    
-print('ciao 3')
+    app.run(host='0.0.0.0', port=80, debug=True)
