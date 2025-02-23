@@ -28,7 +28,7 @@ def login():
 
 @app.route('/maps', methods=['POST', 'GET'])
 def read_data():
-    db = firestore.Client.from_service_account_json('credentials.json', database='prleonelli')
+    db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
     doc_ref = db.collection('Table1').document('Ordini')
     if doc_ref.get().exists:
         diz = doc_ref.get().to_dict()
@@ -65,7 +65,7 @@ def store():
         # Se il documento esiste, aggiorno il Firestore
         diz = doc_ref.get().to_dict()  # Ottieni la versione attuale dei dati
         diz[ID] = val  # Aggiungi il nuovo ordine al dizionario
-        doc_ref.update(diz)  # Aggiorna il documento
+        doc_ref.update({ID: val}) # Aggiorna il documento
     else:
         # Se il documento non esiste, lo creo e inserisco il primo ordine
         doc_ref.set({ID: val})
@@ -90,8 +90,9 @@ def calculate_delivery_time_statistics():
         # Calcolare il tempo medio, la valutazione media e il numero totale di consegne per driver
         for ordine in diz.values():
             driver_id = ordine['Delivery_ID']
-            delivery_time = ordine['Time_taken']
-            delivery_rating = ordine['Delivery_ratings']
+            delivery_time = float(ordine.get('Time_taken', 0))  # Converte in float e imposta 0 se mancante
+            delivery_rating = float(ordine.get('Delivery_ratings', 0))  # Converte in float e imposta 0 se mancante
+
 
             if driver_id not in driver_stats:
                 driver_stats[driver_id] = {
@@ -124,28 +125,38 @@ def calculate_delivery_time_statistics():
 def save_statistics_to_firestore(avg_time, avg_rating, total_orders):
     db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
     stats_ref = db.collection('Driver_Statistics').document('Statistics')
-
     stats_ref.set({
-        'timestamp': firestore.SERVER_TIMESTAMP,
-        'average_times': avg_time,
-        'average_ratings': avg_rating,
-        'total_orders': total_orders
+    'timestamp': firestore.SERVER_TIMESTAMP,
+    'average_times': avg_time,  # Salviamo il dizionario
+    'average_ratings': avg_rating,
+    'total_orders': total_orders
     })
+    print("Salvataggio statistiche:", avg_time, avg_rating, total_orders)
+
+
 
 @app.route('/graph', methods=['POST', 'GET'])
 def graph1_data():
     db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
-    doc_ref = db.collection('Table1').document('Ordini')
+    doc_ref = db.collection('Driver_Statistics').document('Statistics')
     
     if doc_ref.get().exists:
-        r = []
-        diz = doc_ref.get().to_dict()
-        for i in range(1, len(diz) + 1):
-            r.append([i, diz[str(i)]])
+        stats = doc_ref.get().to_dict()
+
+        avg_times = stats.get('average_times', {})
+        avg_ratings = stats.get('average_ratings', {})
+        total_orders = stats.get('total_orders', {})
+        
+        # Converti i dati per passare alla grafica
+        chart_data = []
+        for driver_id in avg_times.keys():
+            chart_data.append([driver_id,  avg_times.get(driver_id, 0), avg_ratings.get(driver_id, 0), total_orders.get(driver_id, 0)])
     else:
         print('Document not found', 404)
 
-    return render_template('graph.html', data=r)
+    # Renderizza la pagina con i dati
+    return render_template('statistiche.html', data=chart_data)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=80, debug=True)
