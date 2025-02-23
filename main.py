@@ -87,12 +87,20 @@ def calculate_delivery_time_statistics():
         diz = doc_ref.get().to_dict()
         driver_stats = {}
 
-        # Calcolare il tempo medio, la valutazione media e il numero totale di consegne per driver
+        # Controlliamo il contenuto del dizionario per debug
+        if not diz:
+            print("Errore: dizionario vuoto o struttura non corretta")
+            return
+
         for ordine in diz.values():
-            driver_id = ordine['Delivery_ID']
+            driver_id = ordine.get('Delivery_ID')  # Usa .get() per evitare errori di chiave
+
+            if driver_id is None:
+                print(f"Errore: 'Delivery_ID' mancante in ordine: {ordine}")
+                continue  # Salta l'ordine se manca l'ID del driver
+
             delivery_time = float(ordine.get('Time_taken', 0))  # Converte in float e imposta 0 se mancante
             delivery_rating = float(ordine.get('Delivery_ratings', 0))  # Converte in float e imposta 0 se mancante
-
 
             if driver_id not in driver_stats:
                 driver_stats[driver_id] = {
