@@ -134,16 +134,25 @@ def save_statistics_to_firestore(avg_time, avg_rating, total_orders):
     db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
     stats_ref = db.collection('Driver_Statistics').document('Statistics')
     stats_ref.set({
-    'timestamp': firestore.SERVER_TIMESTAMP,
     'average_times': avg_time,  # Salviamo il dizionario
     'average_ratings': avg_rating,
     'total_orders': total_orders
     })
-    print("Salvataggio statistiche:", avg_time, avg_rating, total_orders)
+    #print("Salvataggio statistiche:", avg_time, avg_rating, total_orders)
 
+# Aggiungi qui la tua nuova route
+@app.route('/statistics_data', methods=['GET'])
+def statistics_data():
+    db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
+    doc_ref = db.collection('Driver_Statistics').document('Statistics')
 
+    if doc_ref.get().exists:
+        stats = doc_ref.get().to_dict()
+        return json.dumps(stats), 200, {'Content-Type': 'application/json'}
+    else:
+        return json.dumps({'error': 'Document not found'}), 404, {'Content-Type': 'application/json'}
 
-@app.route('/graph', methods=['POST', 'GET'])
+@app.route('/statisitics', methods=['POST', 'GET'])
 def graph1_data():
     db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
     doc_ref = db.collection('Driver_Statistics').document('Statistics')
@@ -162,9 +171,8 @@ def graph1_data():
     else:
         print('Document not found', 404)
 
-    # Renderizza la pagina con i dati
-    return render_template('statistiche.html', data=chart_data)
-
+    # Passa i dati al template 'statistiche.html'
+    return render_template('statistics.html', data=chart_data)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=80, debug=True)
