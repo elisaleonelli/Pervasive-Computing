@@ -26,18 +26,46 @@ def login():
         return redirect(url_for('static', filename='home.html'))
     return redirect(url_for('static', filename='login.html'))
 
-@app.route('/maps', methods=['POST', 'GET'])
+@app.route('/raw_data', methods=['GET'])
+def raw_data():
+    # Crea una connessione al database Firestore usando il file delle credenziali
+    db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
+    
+    # Riferimento al documento 'Ordini' nella collezione 'Table1'
+    doc_ref = db.collection('Table1').document('Ordini')
+
+    # Controlla se il documento esiste
+    if doc_ref.get().exists:
+        # Recupera i dati del documento come un dizionario Python
+        diz = doc_ref.get().to_dict()
+        
+        # Restituisce i dati come una stringa JSON "formattata" con indentazione
+        return json.dumps(diz, indent=4)
+    else:
+        # Se il documento non esiste, restituisce un errore con codice 404
+        return json.dumps({'error': 'document not found'}), 404
+
+@app.route('/static/maps', methods=['POST', 'GET'])
 def read_data():
     db = firestore.Client.from_service_account_json('credentials.json', database='progettoleonelli')
     doc_ref = db.collection('Table1').document('Ordini')
+
     if doc_ref.get().exists:
-        diz = doc_ref.get().to_dict()
-        r=[]
-        for i in range(1, len(diz)+1):
-            r.append([i, diz[str(i)]])
+        diz = doc_ref.get().to_dict()  # Recupera i dati dal Firestore
+        r = []
+        for key, value in diz.items():  # Itera direttamente sulle coppie chiave-valore
+            # Aggiungi le coordinate di consegna al risultato
+            delivery_location = value.get('Delivery_location', [])
+            if delivery_location and len(delivery_location) == 2:  # Verifica che ci siano due coordinate
+                r.append({
+                    'ID': key,  # ID dell'ordine
+                    'Delivery_location': delivery_location
+                })
     else:
-        print('document not found', 404)
-    return json.dumps(r), 200
+        return json.dumps({'error': 'document not found'}), 404
+
+    return render_template('maps.html', data=r)  # Passa i dati al template
+
 
 @app.route('/salvataggio', methods=['POST'])
 def store():
