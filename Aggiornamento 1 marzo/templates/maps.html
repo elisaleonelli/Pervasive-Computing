@@ -1,67 +1,97 @@
 <!DOCTYPE HTML>
-<!--
-	Alpha by HTML5 UP
-	html5up.net | @ajlkn
-	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
--->
 <html>
 	<head>
 		<title>Delivery Elisa - Maps</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
 		<link rel="stylesheet" href="assets/css/main.css" />
+		<!-- Aggiungi il CSS di Leaflet per la mappa -->
+		<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+		<!-- Carica il JavaScript di Leaflet -->
+		<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 	</head>
 	<body class="is-preload">
 		<div id="page-wrapper">
 
-			<!-- Header -->
-				<header id="header">
-					<h1>Delivery Elisa</h1>
-					<nav id="nav">
-						<ul>
-							<li><a href="home.html">Home</a></li>
-						</ul>
-					</nav>
-				</header>
-
-			<!-- Main -->
-				<section id="main" class="container">
-					<header>
-						<h2>Le nostre consegne</h2>
-						<p>Guarda le nostre ultime consegne</p>
-					</header>
-					<div class="box">
-						<span class="image featured"><img src="images/pic01.jpg" alt="" /></span>
-					</div>
-				</section>
-				
-			<!-- CTA -->
-				<section id="cta">
-					<a href="home.html" class="button" style="color: blue;">Home</a>
-				</section>
-
-			<!-- Footer -->
-				<footer id="footer">
-					<ul class="icons">
-						<li><a href="#" class="icon brands fa-twitter"><span class="label">Twitter</span></a></li>
-						<li><a href="#" class="icon brands fa-facebook-f"><span class="label">Facebook</span></a></li>
-						<li><a href="#" class="icon brands fa-instagram"><span class="label">Instagram</span></a></li>
-						<li><a href="#" class="icon brands fa-github"><span class="label">Github</span></a></li>
-						<li><a href="#" class="icon brands fa-dribbble"><span class="label">Dribbble</span></a></li>
-						<li><a href="#" class="icon brands fa-google-plus"><span class="label">Google+</span></a></li>
+			<header id="header">
+				<h1>Delivery Elisa</h1>
+				<nav id="nav">
+					<ul>
+						<li><a href="home.html">Home</a></li>
 					</ul>
-				</footer>
+				</nav>
+			</header>
+
+			<section id="main" class="container">
+				<header>
+					<h2>Le nostre consegne</h2>
+					<p>Guarda le nostre ultime consegne</p>
+				</header>
+				<div class="box">
+					<!-- Aggiungi l'elemento div per la mappa -->
+					<div id="mapid" style="width: 100%; height: 500px;"></div>
+				</div>
+			</section>
+
+			<footer id="footer">
+				<ul class="icons">
+					<li><a href="#" class="icon brands fa-twitter"><span class="label">Twitter</span></a></li>
+					<li><a href="#" class="icon brands fa-facebook-f"><span class="label">Facebook</span></a></li>
+				</ul>
+			</footer>
 
 		</div>
 
-		<!-- Scripts -->
-			<script src="assets/js/jquery.min.js"></script>
-			<script src="assets/js/jquery.dropotron.min.js"></script>
-			<script src="assets/js/jquery.scrollex.min.js"></script>
-			<script src="assets/js/browser.min.js"></script>
-			<script src="assets/js/breakpoints.min.js"></script>
-			<script src="assets/js/util.js"></script>
-			<script src="assets/js/main.js"></script>
+		<script>
+			// Funzione per inizializzare la mappa
+			function initMap() {
+				// Crea la mappa centrata su Modena
+				const map = L.map('mapid').setView([44.4949, 11.3426], 12);
 
+				// Aggiungi le tiles di OpenStreetMap alla mappa
+				L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+				// Fetch dei dati dalla API
+				fetch('/raw_data')
+					.then(response => response.json())
+					.then(data => {
+						console.log(data);  // Verifica la struttura dei dati
+						if (Array.isArray(data)) {  // Verifica se è un array
+							// Aggiungi marker e linee per ogni ristorante/destinazione
+							data.forEach(delivery => {
+								const restaurantPos = [parseFloat(delivery.Restaurant_location[0]), parseFloat(delivery.Restaurant_location[1])];
+								const deliveryPos = [parseFloat(delivery.Delivery_location[0]), parseFloat(delivery.Delivery_location[1])];
+
+								// Marker per il ristorante (Rosso)
+								L.marker(restaurantPos, { icon: L.icon({ iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x-red.png' }) })
+									.addTo(map)
+									.bindPopup("Ristorante");
+
+								// Marker per la destinazione (Blu)
+								L.marker(deliveryPos, { icon: L.icon({ iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x-blue.png' }) })
+									.addTo(map)
+									.bindPopup("Destinazione");
+
+								// Linea nera tra ristorante e destinazione
+								const route = L.polyline([restaurantPos, deliveryPos], {
+									color: "black",  // Colore della linea (nera)
+									weight: 4,
+									opacity: 1
+								}).addTo(map);
+							});
+						} else {
+							console.error('I dati non sono un array:', data);
+						}
+					})
+					.catch(error => {
+						console.error('Errore nel caricamento dei dati:', error);
+					});
+			}
+
+			// Esegui la funzione quando la pagina è completamente caricata
+			window.onload = function() {
+				initMap();
+			};
+		</script>
 	</body>
 </html>
